@@ -12,7 +12,6 @@ MAX30105 particleSensor;
 #define HRT_SENSOR_BEAT_RATE  0x02
 #define HRT_SENSOR_MAGIC      0x03 //don't try me... really :)
 
-#define RATE_AVERAGING_SIZE 5 //Increase this for more averaging. 4 is good.
 #define IR_CUT_OFF 65535
 
 
@@ -44,12 +43,14 @@ void setup() {
 }
 
 
-void outputData(uint8_t i2cMessageType, long irValue, uint8_t beatRateAvg) {
+void outputOnSerial(uint8_t i2cMessageType, long irValue, uint8_t beatRateAvg) {
   // debug.print("CMD=");
   // debug.print(i2cMessageType);
   Serial.write(i2cMessageType);
   if(i2cMessageType == HRT_SENSOR_COVERED) {
     // debug.print(", IR=");
+    // debug.print( irValue);
+    // debug.print(", IR_u8=");
     // debug.print((uint8_t) irValue);
     Serial.write((uint8_t) irValue);
   } else if(i2cMessageType == HRT_SENSOR_BEAT_RATE) {
@@ -57,7 +58,8 @@ void outputData(uint8_t i2cMessageType, long irValue, uint8_t beatRateAvg) {
     // debug.print((uint8_t) beatRateAvg);
     Serial.write((uint8_t) beatRateAvg);
   }
-  // Serial.println();
+  // debug.println();
+  // debug.flush();
   Serial.flush();
 }
 
@@ -78,8 +80,10 @@ void builtinLightFeedback(uint8_t i2cMessageType, unsigned long deltaLastBeat) {
 }
 
 
-byte heartRates[RATE_AVERAGING_SIZE];
-byte rateSpot = 0;
+#define RATE_AVERAGING_SIZE 5
+#define MIN_RATE_AVERAGING_SAMPLES 3
+uint8_t heartRates[RATE_AVERAGING_SIZE];
+uint8_t nextRateSampleIndex = 0;
 
 float beatsPerMinute;
 
@@ -97,6 +101,9 @@ void loop() {
   if (irValue < IR_CUT_OFF) {
     i2cMessageType = HRT_SENSOR_UNCOVERED;
     beatRateAvg = 0;
+    for (uint8_t x = 0 ; x < RATE_AVERAGING_SIZE ; x++){
+      heartRates[x] = 0;
+    }
   } else {
 
     if (checkForBeat(irValue) == true) {
@@ -104,16 +111,32 @@ void loop() {
 
       beatsPerMinute = 60 / (deltaLastBeat / 1000.0);
 
+      // debug.print("BPM=");
+      // debug.print(beatsPerMinute);
+
       if (beatsPerMinute < 0x80 && beatsPerMinute > 40) {
-        heartRates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
-        rateSpot %= RATE_AVERAGING_SIZE; //Wrap variable
+        heartRates[nextRateSampleIndex++] = (byte)beatsPerMinute;
 
-        //Take average of readings
-        beatRateAvg = 0;
-        for (byte x = 0 ; x < RATE_AVERAGING_SIZE ; x++)
-          beatRateAvg += heartRates[x];
+        nextRateSampleIndex %= RATE_AVERAGING_SIZE; //Wrap index
 
-        beatRateAvg /= RATE_AVERAGING_SIZE;
+        uint16_t beatRateAcc = 0;
+        uint8_t validSamples = 0;
+        for (uint8_t x = 0 ; x < RATE_AVERAGING_SIZE ; x++){
+          if (heartRates[x] != 0) {
+            validSamples++;
+            beatRateAcc += heartRates[x];
+          }
+        }
+        if (validSamples >= MIN_RATE_AVERAGING_SAMPLES) {
+          beatRateAvg = beatRateAcc / validSamples;
+        }
+
+        // debug.print(", VS=");
+        // debug.print(validSamples);
+        // debug.print(", AVG=");
+        // debug.print(beatRateAvg);
+        // debug.print(", ");
+
       }
       i2cMessageType = HRT_SENSOR_BEAT_RATE;
 
@@ -123,10 +146,11 @@ void loop() {
 
   }
 
-  outputData(i2cMessageType, irValue, beatRateAvg);
-
-  delay(40);
+  outputOnSerial(i2cMessageType, irValue, beatRateAvg);
 
   builtinLightFeedback(i2cMessageType, deltaLastBeat);
+
+  //checkForBeat() has an input buffer of 32 samples and a non-time based lowpass filter. If we go too fast we will not detect anything.
+  delay(40);
 
 }
