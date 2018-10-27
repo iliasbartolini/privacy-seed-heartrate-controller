@@ -44,12 +44,42 @@ void setup() {
 }
 
 
+void outputData(uint8_t i2cMessageType, long irValue, uint8_t beatRateAvg) {
+  // debug.print("CMD=");
+  // debug.print(i2cMessageType);
+  Serial.write(i2cMessageType);
+  if(i2cMessageType == HRT_SENSOR_COVERED) {
+    // debug.print(", IR=");
+    // debug.print((uint8_t) irValue);
+    Serial.write((uint8_t) irValue);
+  } else if(i2cMessageType == HRT_SENSOR_BEAT_RATE) {
+    // debug.print(", AVG=");
+    // debug.print((uint8_t) beatRateAvg);
+    Serial.write((uint8_t) beatRateAvg);
+  }
+  // Serial.println();
+  Serial.flush();
+}
+
+
+#define BEAT_LED_LENGTH_MS 100
+unsigned long lastBeatTime = 0;
+unsigned long deltaLastBeat = 0;
+void builtinLightFeedback(uint8_t i2cMessageType, unsigned long deltaLastBeat) {
+  if (i2cMessageType == HRT_SENSOR_BEAT_RATE) {
+    digitalWrite(LED_BUILTIN, HIGH);
+  } else {
+    if (deltaLastBeat < BEAT_LED_LENGTH_MS ) {
+      digitalWrite(LED_BUILTIN, HIGH);
+    } else {
+      digitalWrite(LED_BUILTIN, LOW);
+    }
+  }
+}
+
 
 byte heartRates[RATE_AVERAGING_SIZE];
 byte rateSpot = 0;
-unsigned long lastBeatTime = 0;
-unsigned long deltaLastBeat = 0;
-#define BEAT_LED_LENGTH_MS 100
 
 float beatsPerMinute;
 
@@ -69,14 +99,12 @@ void loop() {
     beatRateAvg = 0;
   } else {
 
-    if (checkForBeat(irValue) == true)
-    {
+    if (checkForBeat(irValue) == true) {
       lastBeatTime = millis();
 
       beatsPerMinute = 60 / (deltaLastBeat / 1000.0);
 
-      if (beatsPerMinute < 0x80 && beatsPerMinute > 40)
-      {
+      if (beatsPerMinute < 0x80 && beatsPerMinute > 40) {
         heartRates[rateSpot++] = (byte)beatsPerMinute; //Store this reading in the array
         rateSpot %= RATE_AVERAGING_SIZE; //Wrap variable
 
@@ -84,6 +112,7 @@ void loop() {
         beatRateAvg = 0;
         for (byte x = 0 ; x < RATE_AVERAGING_SIZE ; x++)
           beatRateAvg += heartRates[x];
+
         beatRateAvg /= RATE_AVERAGING_SIZE;
       }
       i2cMessageType = HRT_SENSOR_BEAT_RATE;
@@ -94,33 +123,10 @@ void loop() {
 
   }
 
-  // debug.print("CMD=");
-  // debug.print(i2cMessageType);
-  Serial.write(i2cMessageType);
+  outputData(i2cMessageType, irValue, beatRateAvg);
 
-  if(i2cMessageType == HRT_SENSOR_COVERED) {
-    // debug.print(", IR=");
-    // debug.print((uint8_t) irValue);
-  Serial.write((uint8_t) irValue);
-  } else if(i2cMessageType == HRT_SENSOR_BEAT_RATE) {
-    // debug.print(", AVG=");
-    // debug.print((uint8_t) beatRateAvg);
-   Serial.write((uint8_t) beatRateAvg);
-  }
-
-  // Serial.println();
-  Serial.flush();
-  // debug.println();
-  // debug.flush();
   delay(40);
 
-  if (i2cMessageType == HRT_SENSOR_BEAT_RATE) {
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else {
-    if (deltaLastBeat < BEAT_LED_LENGTH_MS ) {
-      digitalWrite(LED_BUILTIN, HIGH);
-    } else {
-      digitalWrite(LED_BUILTIN, LOW);
-    }
-  }
+  builtinLightFeedback(i2cMessageType, deltaLastBeat);
+
 }
