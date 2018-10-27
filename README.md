@@ -1,7 +1,7 @@
-# Privacy Seed - Heartrate controller
+# Privacy Seed - Heart rate controller
 
-Heartrate controller based on Arduino Nano and MAX30101.
-This component is part of the [https://privacy-seed.org/](Privacy Seed) project.
+Heart rate controller based on Arduino Nano and MAX30101.
+This component is part of the [Privacy Seed](https://privacy-seed.org/) project.
 
 The hardware interface uses two custom made shield boards:
 - Voltage regulator and I2C voltage converter (TODO: add KiCAD project link)
