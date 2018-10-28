@@ -43,7 +43,7 @@ void setup() {
 }
 
 
-void outputOnSerial(uint8_t i2cMessageType, long irValue, uint8_t beatRateAvg) {
+void outputOnSerial(uint8_t i2cMessageType, uint32_t irValue, uint8_t beatRateAvg) {
   // debug.print("CMD=");
   // debug.print(i2cMessageType);
   Serial.write(i2cMessageType);
@@ -88,9 +88,15 @@ uint8_t nextRateSampleIndex = 0;
 float beatsPerMinute;
 
 uint8_t i2cMessageType = HRT_SENSOR_UNCOVERED;
-long irValue = 0;
+uint32_t irValue = 0;
 uint8_t beatRateAvg = 0;
 
+void resetRateAvg() {
+  beatRateAvg = 0;
+  for (uint8_t x = 0 ; x < RATE_AVERAGING_SIZE ; x++){
+    heartRates[x] = 0;
+  }
+}
 
 void loop() {
 
@@ -100,19 +106,14 @@ void loop() {
 
   if (irValue < IR_CUT_OFF) {
     i2cMessageType = HRT_SENSOR_UNCOVERED;
-    beatRateAvg = 0;
-    for (uint8_t x = 0 ; x < RATE_AVERAGING_SIZE ; x++){
-      heartRates[x] = 0;
-    }
+    resetDetectBeat();
+    resetRateAvg();
   } else {
 
-    if (checkForBeat(irValue) == true) {
+    if (detectBeat(irValue) == true) {
       lastBeatTime = millis();
 
       beatsPerMinute = 60 / (deltaLastBeat / 1000.0);
-
-      // debug.print("BPM=");
-      // debug.print(beatsPerMinute);
 
       if (beatsPerMinute < 0x80 && beatsPerMinute > 40) {
         heartRates[nextRateSampleIndex++] = (byte)beatsPerMinute;
@@ -130,15 +131,10 @@ void loop() {
         if (validSamples >= MIN_RATE_AVERAGING_SAMPLES) {
           beatRateAvg = beatRateAcc / validSamples;
         }
-
-        // debug.print(", VS=");
-        // debug.print(validSamples);
-        // debug.print(", AVG=");
-        // debug.print(beatRateAvg);
-        // debug.print(", ");
-
+        i2cMessageType = HRT_SENSOR_BEAT_RATE;
+      } else {
+        i2cMessageType = HRT_SENSOR_COVERED;
       }
-      i2cMessageType = HRT_SENSOR_BEAT_RATE;
 
     } else {
       i2cMessageType = HRT_SENSOR_COVERED;
@@ -150,7 +146,8 @@ void loop() {
 
   builtinLightFeedback(i2cMessageType, deltaLastBeat);
 
-  //checkForBeat() has an input buffer of 32 samples and a non-time based lowpass filter. If we go too fast we will not detect anything.
-  delay(40);
+  //checkForBeat() has an input buffer of few samples.
+  //If we go too fast we will detect noise.
+  delay(25);
 
 }
